@@ -5,14 +5,20 @@
   "description": "A browser-based GIF crop, resize, and compression editor.",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "vitest run --exclude '**/*.browser.test.js'",
+    "test:browser": "vitest run --config vitest.browser.config.js"
   },
   "dependencies": {
     "gif.js.optimized": "^1.0.1",
     "gifuct-js": "^2.1.2",
-    "lucide": "^1.24.0"
+    "lucide": "^1.24.0",
+    "xstate": "^5.32.4"
   },
   "devDependencies": {
-    "vite": "^7.0.0"
+    "@vitest/browser-playwright": "^4.1.10",
+    "playwright": "^1.61.1",
+    "vite": "^7.0.0",
+    "vitest": "^4.1.10"
   }
 }
