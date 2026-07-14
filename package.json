@@ -2,12 +2,13 @@
   "name": "gif-slicer",
   "version": "0.1.0",
   "private": true,
-  "description": "A browser-based GIF crop, resize, and compression editor.",
+  "description": "GIFor is a browser-based GIF crop, resize, optimize, and sprite-sheet export editor.",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "test": "vitest run --exclude '**/*.browser.test.js'",
-    "test:browser": "vitest run --config vitest.browser.config.js"
+    "test:browser": "vitest run --config vitest.browser.config.js",
+    "test:a11y": "node scripts/a11y-audit.mjs"
   },
   "dependencies": {
     "gif.js.optimized": "^1.0.1",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@vitest/browser-playwright": "^4.1.10",
+    "axe-core": "^4.12.1",
     "playwright": "^1.61.1",
     "vite": "^7.0.0",
     "vitest": "^4.1.10"

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyTransparencyKey, composeTo, createCompositor, drawTransformed } from './canvas.js';
+import { createProjectFile, parseProjectFile } from './projectFile.js';
 import { createSpriteSheet } from './spriteSheet.js';
+import { applyTransforms, getTransform, listTransforms } from '../transforms/index.js';
 
 describe('canvas service browser integration', () => {
   it('composes frame patches with browser canvas APIs', () => {
@@ -82,6 +84,48 @@ describe('canvas service browser integration', () => {
     });
     expect(result.blob.type).toBe('image/png');
     expect(result.blob.size).toBeGreaterThan(0);
+  });
+
+  it('round-trips a project file with embedded GIF source data', async () => {
+    const sourceFile = new File([new Uint8Array([1, 2, 3])], 'sample.gif', { type: 'image/gif', lastModified: 123 });
+    const project = await createProjectFile({
+      file: sourceFile,
+      crop: { x: 0, y: 0, width: 2, height: 1 },
+      outputEdge: 2,
+      maxBytes: 1_000_000,
+      frameRange: { start: 0, end: 1 },
+      speed: 1.5,
+      paletteMode: 'balanced',
+      alphaEnabled: false,
+      matteColor: '#ffeecc',
+      flipX: true,
+      flipY: false,
+      currentFrame: 1,
+      zoom: 120
+    });
+    const projectFile = new File([JSON.stringify(project)], 'sample.gifor.json', { type: 'application/json' });
+    const parsed = await parseProjectFile(projectFile);
+
+    expect(parsed.sourceFile.name).toBe('sample.gif');
+    expect(parsed.sourceFile.type).toBe('image/gif');
+    expect(parsed.editor).toMatchObject({ speed: 1.5, paletteMode: 'balanced', alphaEnabled: false, matteColor: '#ffeecc', currentFrame: 1 });
+    expect(Array.from(new Uint8Array(await parsed.sourceFile.arrayBuffer()))).toEqual([1, 2, 3]);
+  });
+
+  it('applies registered transforms through the transform registry', () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(new ImageData(new Uint8ClampedArray([100, 150, 200, 255]), 1, 1), 0, 0);
+
+    expect(getTransform('grayscale')).toMatchObject({ id: 'grayscale', label: 'Grayscale' });
+    expect(listTransforms().map((transform) => transform.id)).toContain('sepia');
+    applyTransforms(canvas, ['grayscale']);
+
+    const [red, green, blue] = pixel(ctx, 0, 0);
+    expect(red).toBe(green);
+    expect(green).toBe(blue);
   });
 });
 

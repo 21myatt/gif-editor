@@ -1,3 +1,5 @@
+import { applyTransforms } from '../transforms/index.js';
+
 export const TRANSPARENT_KEY = 0xff00ff;
 
 export function createCompositor(source) {
@@ -42,6 +44,7 @@ export function drawTransformed(ctx, sourceCanvas, transform, size) {
     size.height
   );
   ctx.restore();
+  applyTransforms(ctx.canvas, transform.filters);
 }
 
 export function applyTransparencyKey(ctx, width, height, threshold) {

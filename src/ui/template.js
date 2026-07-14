@@ -1,35 +1,40 @@
-import { createIcons, Crop, Download, FilePlus2, FlipHorizontal2, FlipVertical2, Gauge, Pause, Play, RotateCcw, Scaling, SkipBack, SkipForward, Upload, X, ZoomIn, ZoomOut } from 'lucide';
+import { createIcons, CircleHelp, Crop, Download, FilePlus2, FlipHorizontal2, FlipVertical2, Gauge, Images, Palette, Pause, Play, RotateCcw, Scaling, SkipBack, SkipForward, Upload, X, ZoomIn, ZoomOut } from 'lucide';
 
-const iconSet = { Upload, Download, Crop, Scaling, FlipHorizontal2, FlipVertical2, Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, RotateCcw, FilePlus2, Gauge, X };
+const iconSet = { Upload, Download, Crop, Scaling, FlipHorizontal2, FlipVertical2, Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, RotateCcw, FilePlus2, Gauge, X, Images, Palette, CircleHelp };
 
 const elementIds = [
   'fileInput', 'dropZone', 'emptyView', 'editor', 'fileName', 'newButton', 'exportButton', 'exportLabel',
+  'projectInput', 'saveProjectButton', 'openProjectButton', 'shortcutHelpButton',
   'cropX', 'cropY', 'cropWidth', 'cropHeight', 'resetCrop', 'cropModeButton', 'previewModeButton', 'cropOverlay', 'outputWidth', 'outputDimensions', 'flipX', 'flipY',
-  'sizeLimit', 'sizeLimitText', 'reductionMetric', 'frameStart', 'frameEnd', 'speedControl', 'speedValue', 'paletteMode', 'spriteSheetButton', 'previewCanvas', 'canvasStage', 'stageBadge', 'zoomOut', 'zoomIn',
-  'zoomLabel', 'firstFrame', 'playButton', 'lastFrame', 'timecode', 'frameCount', 'timelineStrip', 'progress',
-  'progressTitle', 'progressText', 'progressBar', 'toast', 'errorDialog', 'errorTitle', 'errorMessage', 'retryButton', 'abortButton',
-  'spriteDialog', 'spriteColumns', 'spriteRows', 'spritePreviewButton', 'spriteDownloadButton', 'spriteCancelButton', 'spritePreview', 'spriteMeta'
+  'sizeLimit', 'sizeLimitText', 'reductionMetric', 'alphaToggle', 'matteColor', 'frameStart', 'frameEnd', 'speedControl', 'speedValue', 'paletteMode', 'spriteSheetButton', 'previewCanvas', 'canvasStage', 'stageBadge', 'zoomOut', 'zoomIn',
+  'zoomLabel', 'firstFrame', 'playButton', 'lastFrame', 'timecode', 'frameCount', 'timelineModeButton', 'timelineStrip', 'progress',
+  'progressTitle', 'progressText', 'progressBar', 'toast', 'errorDialog', 'errorTitle', 'errorMessage', 'errorDetails', 'copyErrorButton', 'retryButton', 'abortButton',
+  'spriteDialog', 'spriteColumns', 'spriteRows', 'spritePreviewButton', 'spriteDownloadButton', 'spriteCancelButton', 'spritePreview', 'spriteMeta',
+  'shortcutDialog', 'shortcutCloseButton'
 ];
 
 export function renderTemplate(app) {
   app.innerHTML = `
     <div class="app">
       <header class="topbar">
-        <div class="brand"><span class="brand-mark">F</span><span>Framecut</span></div>
+        <div class="brand"><span class="brand-mark">G</span><span>GIFor</span></div>
         <div id="fileName" class="file-name">No file open</div>
         <div class="header-actions">
+          <button id="openProjectButton" class="button secondary" type="button"><i data-lucide="upload"></i><span class="button-label">Open</span></button>
+          <button id="saveProjectButton" class="button secondary" type="button" disabled><i data-lucide="download"></i><span class="button-label">Save</span></button>
           <button id="newButton" class="button secondary hidden" type="button"><i data-lucide="file-plus-2"></i><span class="button-label">New</span></button>
+          <button id="shortcutHelpButton" class="icon-button" type="button" title="Keyboard shortcuts"><i data-lucide="circle-help"></i></button>
           <button id="exportButton" class="button primary" type="button" disabled><i data-lucide="download"></i><span id="exportLabel" class="button-label">Export GIF</span></button>
+          <input id="projectInput" type="file" accept="application/json,.json" hidden>
         </div>
       </header>
 
       <main id="emptyView" class="empty-view">
         <label id="dropZone" class="drop-zone" for="fileInput">
           <span class="drop-icon"><i data-lucide="upload"></i></span>
-          <h1>Open a GIF to begin</h1>
-          <p>Drop any GIF here, or choose one from your device.</p>
+          <h1>Drop GIF</h1>
+          <p>Crop, tune, export.</p>
           <span class="button">Choose GIF</span>
-          <small>Processed locally. Nothing is uploaded.</small>
           <input id="fileInput" type="file" accept="image/gif,.gif" hidden>
         </label>
       </main>
@@ -74,6 +79,14 @@ export function renderTemplate(app) {
               </div>
             </div>
             <div class="metric"><span>Target reduction</span><strong id="reductionMetric">-</strong></div>
+            <label class="check-row" for="alphaToggle">
+              <input id="alphaToggle" type="checkbox" checked>
+              <span>Preserve alpha</span>
+            </label>
+            <div class="field full matte-field" style="margin-top:10px">
+              <label for="matteColor"><i data-lucide="palette"></i> Matte color</label>
+              <input id="matteColor" class="color-control" type="color" value="#ffffff">
+            </div>
           </section>
 
           <section class="tool-group">
@@ -133,7 +146,10 @@ export function renderTemplate(app) {
               <button id="lastFrame" class="icon-button" type="button" title="Last frame"><i data-lucide="skip-forward"></i></button>
               <span id="timecode" class="timecode">00:00 / 00:00</span>
             </div>
-            <div class="transport-right"><span id="frameCount" class="timecode">0 frames</span></div>
+            <div class="transport-right">
+              <button id="timelineModeButton" class="icon-button" type="button" title="Show sampled timeline"><i data-lucide="images"></i></button>
+              <span id="frameCount" class="timecode">0 frames</span>
+            </div>
           </div>
           <div id="timelineStrip" class="timeline-strip"></div>
         </section>
@@ -150,10 +166,26 @@ export function renderTemplate(app) {
         <div class="error-panel">
           <strong id="errorTitle">Something went wrong</strong>
           <p id="errorMessage"></p>
+          <pre id="errorDetails" class="error-details hidden"></pre>
           <div class="error-actions">
+            <button id="copyErrorButton" class="button secondary" type="button">Copy details</button>
             <button id="abortButton" class="button secondary" type="button">Abort</button>
             <button id="retryButton" class="button primary" type="button">Retry</button>
           </div>
+        </div>
+      </div>
+      <div id="shortcutDialog" class="shortcut-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="shortcutTitle">
+        <div class="shortcut-panel">
+          <div class="shortcut-header">
+            <strong id="shortcutTitle">Keyboard shortcuts</strong>
+            <button id="shortcutCloseButton" class="icon-button" type="button" title="Close shortcuts"><i data-lucide="x"></i></button>
+          </div>
+          <dl class="shortcut-list">
+            <div><dt>Space</dt><dd>Play or pause</dd></div>
+            <div><dt>Left / Right</dt><dd>Seek one frame</dd></div>
+            <div><dt>Home / End</dt><dd>First or last frame</dd></div>
+            <div><dt>?</dt><dd>Show or hide this sheet</dd></div>
+          </dl>
         </div>
       </div>
       <div id="spriteDialog" class="sprite-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="spriteTitle">
@@ -161,7 +193,7 @@ export function renderTemplate(app) {
           <div class="sprite-header">
             <div>
               <strong id="spriteTitle">Sprite sheet</strong>
-              <p>Set grid dimensions, preview the sheet, then export PNG.</p>
+              <p>Set grid, preview, export PNG.</p>
             </div>
             <button id="spriteCancelButton" class="icon-button" type="button" title="Close"><i data-lucide="x"></i></button>
           </div>

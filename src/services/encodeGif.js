@@ -44,7 +44,7 @@ function encodeAttempt(context, strategy, options, onProgress) {
       quality: options.quality,
       width: options.width,
       height: options.height,
-      transparent: TRANSPARENT_KEY,
+      transparent: context.alphaEnabled ? TRANSPARENT_KEY : null,
       workerScript: '/gif.worker.js'
     });
     const compositor = createCompositor(context.source);
@@ -59,8 +59,12 @@ function encodeAttempt(context, strategy, options, onProgress) {
       const frameIndex = frameIndexes[index];
       const source = composeTo(compositor, context.frames, frameIndex);
       ctx.clearRect(0, 0, options.width, options.height);
+      if (!context.alphaEnabled) {
+        ctx.fillStyle = context.matteColor || '#ffffff';
+        ctx.fillRect(0, 0, options.width, options.height);
+      }
       drawTransformed(ctx, source, context, options);
-      applyTransparencyKey(ctx, options.width, options.height, strategy.transparentAlphaThreshold);
+      if (context.alphaEnabled) applyTransparencyKey(ctx, options.width, options.height, strategy.transparentAlphaThreshold);
       let delay = 0;
       for (let offset = 0; offset < options.sampleEvery && index + offset < frameIndexes.length; offset += 1) {
         delay += speedAdjustedDelay(frameDelay(context.frames[frameIndexes[index + offset]]), context.speed);

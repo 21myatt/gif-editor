@@ -15,6 +15,7 @@ export function createRenderer({ el }) {
   let spritePreviewResult = null;
   let timelineBuildPending = false;
   let toastTimer = null;
+  let lastErrorDetails = '';
 
   function attachActor(nextEditor) {
     editor = nextEditor;
@@ -49,6 +50,7 @@ export function createRenderer({ el }) {
       setBusy(false);
       syncControls();
       renderCurrentFrame(snapshot);
+      if (state.timelineMode !== previous?.context.timelineMode) rebuildTimeline();
 
       if (state.exportResult && state.exportResult !== previous?.context.exportResult) downloadExport(state.exportResult);
     }
@@ -79,6 +81,7 @@ export function createRenderer({ el }) {
     el.emptyView.classList.remove('hidden');
     el.newButton.classList.add('hidden');
     el.exportButton.disabled = true;
+    el.saveProjectButton.disabled = true;
     el.fileName.textContent = 'No file open';
     el.timelineStrip.replaceChildren();
   }
@@ -88,7 +91,8 @@ export function createRenderer({ el }) {
     el.editor.classList.remove('hidden');
     el.newButton.classList.remove('hidden');
     el.exportButton.disabled = false;
-    el.fileName.textContent = state.file?.name || 'GIF editor';
+    el.saveProjectButton.disabled = false;
+    el.fileName.textContent = state.file?.name || 'GIFor';
     el.frameCount.textContent = `${state.frames.length} frame${state.frames.length === 1 ? '' : 's'}`;
   }
 
@@ -107,7 +111,7 @@ export function createRenderer({ el }) {
       el.canvasStage.classList.add('crop-active');
       el.cropOverlay.classList.remove('hidden');
       positionCropOverlay();
-      el.stageBadge.textContent = `${state.crop.width} x ${state.crop.height}`;
+      el.stageBadge.textContent = `Crop mode - ${state.crop.width} x ${state.crop.height}`;
     } else {
       el.previewCanvas.width = size.width;
       el.previewCanvas.height = size.height;
@@ -116,7 +120,7 @@ export function createRenderer({ el }) {
       el.canvasStage.style.aspectRatio = `${size.width} / ${size.height}`;
       el.canvasStage.classList.remove('crop-active');
       el.cropOverlay.classList.add('hidden');
-      el.stageBadge.textContent = `${size.width} x ${size.height}`;
+      el.stageBadge.textContent = `Preview - ${size.width} x ${size.height}`;
     }
 
     el.cropModeButton.classList.toggle('active', cropMode);
@@ -137,8 +141,7 @@ export function createRenderer({ el }) {
 
   async function buildTimeline() {
     el.timelineStrip.replaceChildren();
-    const count = Math.min(14, state.frames.length);
-    const targets = [...new Set(Array.from({ length: count }, (_, index) => Math.round(index * (state.frames.length - 1) / Math.max(1, count - 1))))];
+    const targets = timelineTargets();
     const compositor = createCompositor(state.source);
     const thumb = document.createElement('canvas');
     thumb.width = 96;
@@ -167,6 +170,14 @@ export function createRenderer({ el }) {
     updateActiveFrame();
   }
 
+  function timelineTargets() {
+    if (state.timelineMode === 'sampled') {
+      const count = Math.min(14, state.frames.length);
+      return [...new Set(Array.from({ length: count }, (_, index) => Math.round(index * (state.frames.length - 1) / Math.max(1, count - 1))))];
+    }
+    return Array.from({ length: state.frames.length }, (_, index) => index);
+  }
+
   function syncControls() {
     el.cropX.value = state.crop.x;
     el.cropY.value = state.crop.y;
@@ -176,6 +187,10 @@ export function createRenderer({ el }) {
     const limitMb = state.maxBytes / 1_000_000;
     el.sizeLimit.value = limitMb;
     el.sizeLimitText.value = limitMb;
+    el.alphaToggle.checked = state.alphaEnabled;
+    el.matteColor.value = state.matteColor;
+    el.matteColor.disabled = state.alphaEnabled;
+    el.matteColor.title = state.alphaEnabled ? 'Matte color is used only when alpha is disabled' : 'Opaque matte color for transparent pixels';
     el.frameStart.value = state.frameRange.start + 1;
     el.frameEnd.value = state.frameRange.end + 1;
     el.frameEnd.max = state.frames.length || 1;
@@ -183,6 +198,10 @@ export function createRenderer({ el }) {
     el.speedControl.value = state.speed;
     el.speedValue.textContent = `${state.speed}x`;
     el.paletteMode.value = state.paletteMode;
+    el.timelineModeButton.classList.toggle('active', state.timelineMode === 'all');
+    el.timelineModeButton.title = state.timelineMode === 'all' ? 'Show sampled timeline' : 'Show all frames';
+    el.timelineModeButton.setAttribute('aria-label', el.timelineModeButton.title);
+    el.frameCount.textContent = `${state.frames.length} frame${state.frames.length === 1 ? '' : 's'} - ${state.timelineMode === 'all' ? 'all' : 'sampled'}`;
     el.flipX.classList.toggle('active', state.flipX);
     el.flipY.classList.toggle('active', state.flipY);
     el.flipX.setAttribute('aria-pressed', String(state.flipX));
@@ -196,6 +215,11 @@ export function createRenderer({ el }) {
     return calculateOutputSize(state.crop, maxEdge, defaultOptimizationStrategy);
   }
 
+  function rebuildTimeline() {
+    if (!state.frames.length) return;
+    buildTimeline().catch((error) => sendRendererFailure('TIMELINE_FAILED', error));
+  }
+
   function setPlayIcon(playing) {
     el.playButton.innerHTML = `<i data-lucide="${playing ? 'pause' : 'play'}"></i>`;
     el.playButton.title = playing ? 'Pause' : 'Play';
@@ -207,7 +231,7 @@ export function createRenderer({ el }) {
     outputUrl = URL.createObjectURL(result.blob);
     const link = document.createElement('a');
     link.href = outputUrl;
-    link.download = `${state.file.name.replace(/\.gif$/i, '')}-framecut.gif`;
+    link.download = `${state.file.name.replace(/\.gif$/i, '')}-gifor.gif`;
     link.click();
     const reduction = Math.max(0, Math.round((1 - result.blob.size / state.file.size) * 100));
     showToast(`Exported ${formatBytes(result.blob.size)} - ${result.width} x ${result.height} - ${reduction}% smaller`);
@@ -257,6 +281,10 @@ export function createRenderer({ el }) {
   function showError(error) {
     el.errorTitle.textContent = error?.code || 'Error';
     el.errorMessage.textContent = error?.message || 'An unexpected error occurred.';
+    lastErrorDetails = formatErrorDetails(error);
+    el.errorDetails.textContent = lastErrorDetails;
+    el.errorDetails.classList.toggle('hidden', !lastErrorDetails);
+    el.copyErrorButton.disabled = !lastErrorDetails;
     el.retryButton.classList.toggle('hidden', error?.recovery === 'abort');
     el.errorDialog.classList.remove('hidden');
     el.abortButton.focus();
@@ -264,6 +292,31 @@ export function createRenderer({ el }) {
 
   function hideError() {
     el.errorDialog.classList.add('hidden');
+  }
+
+  async function copyErrorDetails() {
+    if (!lastErrorDetails) return;
+    try {
+      await navigator.clipboard.writeText(lastErrorDetails);
+      showToast('Error details copied');
+    } catch {
+      showToast('Could not copy error details', true);
+    }
+  }
+
+  function openShortcutSheet() {
+    el.shortcutDialog.classList.remove('hidden');
+    el.shortcutCloseButton.focus();
+  }
+
+  function closeShortcutSheet() {
+    el.shortcutDialog.classList.add('hidden');
+    el.shortcutHelpButton.focus();
+  }
+
+  function toggleShortcutSheet() {
+    if (el.shortcutDialog.classList.contains('hidden')) openShortcutSheet();
+    else closeShortcutSheet();
   }
 
   function showToast(message, error = false) {
@@ -352,7 +405,34 @@ export function createRenderer({ el }) {
     });
   }
 
-  return { attachActor, renderFromSnapshot, setProgress, openSpriteSheetDialog, closeSpriteSheetDialog, previewSpriteSheet, downloadSpriteSheet };
+  return {
+    attachActor,
+    renderFromSnapshot,
+    setProgress,
+    openSpriteSheetDialog,
+    closeSpriteSheetDialog,
+    previewSpriteSheet,
+    downloadSpriteSheet,
+    copyErrorDetails,
+    openShortcutSheet,
+    closeShortcutSheet,
+    toggleShortcutSheet
+  };
+}
+
+function formatErrorDetails(error) {
+  if (!error) return '';
+  return JSON.stringify({
+    code: error.code,
+    message: error.message,
+    recovery: error.recovery,
+    returnState: error.returnState,
+    cause: error.cause ? {
+      name: error.cause.name,
+      message: error.cause.message,
+      stack: error.cause.stack
+    } : null
+  }, null, 2);
 }
 
 function formatBytes(bytes) {

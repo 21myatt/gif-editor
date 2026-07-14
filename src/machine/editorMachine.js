@@ -6,6 +6,11 @@ import { clampFrameRange, clampSpeed, speedAdjustedDelay } from '../domain/expor
 import { frameDelay } from '../services/canvas.js';
 import { decodeGif as decodeGifService } from '../services/decodeGif.js';
 
+const DEFAULT_MATTE_COLOR = '#ffffff';
+const DEBUG_FRAME_SUMMARY_LIMIT = 120;
+const DEBUG_FILTER_SUMMARY_LIMIT = 50;
+const SMART_TIMELINE_FRAME_THRESHOLD = 80;
+
 export function createEditorMachine({ encodeGif, decodeGif = decodeGifService }) {
   return setup({
     actors: {
@@ -27,6 +32,9 @@ export function createEditorMachine({ encodeGif, decodeGif = decodeGifService })
         frameRange: { start: 0, end: Math.max(0, event.output.frames.length - 1) },
         speed: 1,
         paletteMode: 'full',
+        alphaEnabled: true,
+        matteColor: DEFAULT_MATTE_COLOR,
+        timelineMode: event.output.frames.length > SMART_TIMELINE_FRAME_THRESHOLD ? 'sampled' : 'all',
         currentFrame: 0,
         error: null
       })),
@@ -40,6 +48,22 @@ export function createEditorMachine({ encodeGif, decodeGif = decodeGifService })
       clearDocument: assign(() => initialContext()),
       clearError: assign({ error: null }),
       noop: () => {},
+      applyProjectState: assign(({ context, event }) => ({
+        crop: constrainCrop(event.project.crop || context.crop, context.source),
+        outputEdge: clampInteger(event.project.outputEdge, defaultOptimizationStrategy.minimumEdge, defaultOptimizationStrategy.maximumEdge),
+        maxBytes: Math.round(Math.min(defaultOptimizationStrategy.maximumLimitMb, Math.max(defaultOptimizationStrategy.minimumLimitMb, Number(event.project.maxBytes) / 1_000_000 || 1)) * 1_000_000),
+        frameRange: clampFrameRange(event.project.frameRange || context.frameRange, context.frames.length),
+        speed: clampSpeed(event.project.speed),
+        paletteMode: ['full', 'balanced', 'compact'].includes(event.project.paletteMode) ? event.project.paletteMode : 'full',
+        alphaEnabled: event.project.alphaEnabled !== false,
+        matteColor: normalizeHexColor(event.project.matteColor, DEFAULT_MATTE_COLOR),
+        timelineMode: event.project.timelineMode === 'sampled' ? 'sampled' : 'all',
+        filters: Array.isArray(event.project.filters) ? event.project.filters : [],
+        flipX: Boolean(event.project.flipX),
+        flipY: Boolean(event.project.flipY),
+        currentFrame: Math.max(0, Math.min(context.frames.length - 1, Number(event.project.currentFrame) || 0)),
+        zoom: Math.min(150, Math.max(50, Number(event.project.zoom) || 100))
+      })),
       updateCrop: assign(({ context, event }) => ({ crop: constrainCrop(event.crop, context.source) })),
       resetCrop: assign(({ context }) => ({ crop: initialCrop(context.source) })),
       updateOutputEdge: assign(({ event }) => ({
@@ -60,6 +84,11 @@ export function createEditorMachine({ encodeGif, decodeGif = decodeGifService })
       updatePaletteMode: assign(({ event }) => ({
         paletteMode: ['full', 'balanced', 'compact'].includes(event.value) ? event.value : 'full'
       })),
+      updateAlpha: assign(({ event }) => ({ alphaEnabled: Boolean(event.value) })),
+      updateMatteColor: assign(({ event, context }) => ({
+        matteColor: normalizeHexColor(event.value, context.matteColor)
+      })),
+      toggleTimelineMode: assign(({ context }) => ({ timelineMode: context.timelineMode === 'all' ? 'sampled' : 'all' })),
       updateZoom: assign(({ event }) => ({ zoom: Math.min(150, Math.max(50, event.value)) })),
       seekFrame: assign(({ context, event }) => ({
         currentFrame: Math.max(0, Math.min(context.frames.length - 1, event.index))
@@ -103,8 +132,12 @@ export function createEditorMachine({ encodeGif, decodeGif = decodeGifService })
           SET_FRAME_END: { actions: 'updateFrameEnd' },
           SET_SPEED: { actions: 'updateSpeed' },
           SET_PALETTE_MODE: { actions: 'updatePaletteMode' },
+          SET_ALPHA: { actions: 'updateAlpha' },
+          SET_MATTE_COLOR: { actions: 'updateMatteColor' },
+          TOGGLE_TIMELINE_MODE: { actions: 'toggleTimelineMode' },
           SET_ZOOM: { actions: 'updateZoom' },
           SEEK: { actions: 'seekFrame' },
+          APPLY_PROJECT_STATE: { actions: 'applyProjectState' },
           EXPORT_SPRITE_SHEET: { actions: 'noop' },
           EXPORT: { target: 'exporting', guard: 'hasFrames' },
           NEW: { target: 'empty', actions: 'clearDocument' }
@@ -166,13 +199,22 @@ export function serializeEditorContext(context) {
     file: serializeFile(context.file),
     parsed: summarizeParsedGif(context.parsed),
     source: context.source,
-    frames: context.frames.map(summarizeFrame),
+    frames: context.frames.slice(0, DEBUG_FRAME_SUMMARY_LIMIT).map(summarizeFrame),
     crop: context.crop,
     outputEdge: context.outputEdge,
     maxBytes: context.maxBytes,
     frameRange: context.frameRange,
     speed: context.speed,
     paletteMode: context.paletteMode,
+    alphaEnabled: context.alphaEnabled,
+    matteColor: context.matteColor,
+    timelineMode: context.timelineMode,
+    frameSummary: {
+      total: context.frames.length,
+      serialized: Math.min(context.frames.length, DEBUG_FRAME_SUMMARY_LIMIT),
+      truncated: context.frames.length > DEBUG_FRAME_SUMMARY_LIMIT
+    },
+    filters: summarizeFilters(context.filters),
     flipX: context.flipX,
     flipY: context.flipY,
     currentFrame: context.currentFrame,
@@ -207,6 +249,10 @@ export function initialContext() {
     frameRange: { start: 0, end: 0 },
     speed: 1,
     paletteMode: 'full',
+    alphaEnabled: true,
+    matteColor: DEFAULT_MATTE_COLOR,
+    timelineMode: 'all',
+    filters: [],
     flipX: false,
     flipY: false,
     currentFrame: 0,
@@ -244,6 +290,17 @@ function summarizeParsedGif(parsed) {
   };
 }
 
+function summarizeFilters(filters) {
+  if (!Array.isArray(filters)) return [];
+  return filters
+    .slice(0, DEBUG_FILTER_SUMMARY_LIMIT)
+    .map((filter) => typeof filter === 'string' ? filter : {
+      id: filter?.id,
+      label: filter?.label,
+      type: typeof filter
+    });
+}
+
 function summarizeFrame(frame) {
   return {
     delay: frame.delay,
@@ -251,6 +308,12 @@ function summarizeFrame(frame) {
     dims: frame.dims ? { ...frame.dims } : null,
     patchBytes: frame.patch?.byteLength || frame.patch?.length || 0
   };
+}
+
+function normalizeHexColor(value, fallback) {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(trimmed) ? trimmed.toLowerCase() : fallback;
 }
 
 function serializeError(error) {

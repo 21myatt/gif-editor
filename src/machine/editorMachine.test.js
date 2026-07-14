@@ -71,6 +71,77 @@ describe('editor machine', () => {
     expect(actor.getSnapshot().can({ type: 'EXPORT_SPRITE_SHEET' })).toBe(true);
   });
 
+  it('applies saved project editor state after loading', async () => {
+    const actor = await editingActor();
+    actor.send({
+      type: 'APPLY_PROJECT_STATE',
+      project: {
+        crop: { x: 10, y: 10, width: 100, height: 80 },
+        outputEdge: 240,
+        maxBytes: 500_000,
+        frameRange: { start: 1, end: 1 },
+        speed: 2,
+        paletteMode: 'compact',
+        alphaEnabled: false,
+        matteColor: '#112233',
+        timelineMode: 'sampled',
+        filters: ['grayscale'],
+        flipX: true,
+        flipY: false,
+        currentFrame: 1,
+        zoom: 130
+      }
+    });
+
+    expect(actor.getSnapshot().context).toMatchObject({
+      crop: { x: 10, y: 10, width: 100, height: 80 },
+      outputEdge: 240,
+      maxBytes: 500_000,
+      frameRange: { start: 1, end: 1 },
+      speed: 2,
+      paletteMode: 'compact',
+      alphaEnabled: false,
+      matteColor: '#112233',
+      timelineMode: 'sampled',
+      filters: ['grayscale'],
+      flipX: true,
+      flipY: false,
+      currentFrame: 1,
+      zoom: 130
+    });
+  });
+
+  it('updates alpha export and timeline display options', async () => {
+    const actor = await editingActor();
+    actor.send({ type: 'SET_ALPHA', value: false });
+    actor.send({ type: 'SET_MATTE_COLOR', value: '#00cc88' });
+    actor.send({ type: 'TOGGLE_TIMELINE_MODE' });
+
+    expect(actor.getSnapshot().context.alphaEnabled).toBe(false);
+    expect(actor.getSnapshot().context.matteColor).toBe('#00cc88');
+    expect(actor.getSnapshot().context.timelineMode).toBe('sampled');
+  });
+
+  it('starts high-frame GIFs in sampled timeline mode', async () => {
+    const largeDecoded = {
+      ...decoded,
+      frames: Array.from({ length: 81 }, () => ({ delay: 100 }))
+    };
+    const actor = createTestActor({ decodeGif: vi.fn().mockResolvedValue(largeDecoded) });
+
+    actor.send({ type: 'OPEN_GIF', file: decoded.file });
+    await waitFor(actor, (snapshot) => snapshot.matches('buildingTimeline'));
+
+    expect(actor.getSnapshot().context.timelineMode).toBe('sampled');
+  });
+
+  it('keeps invalid matte colors from entering context', async () => {
+    const actor = await editingActor();
+    actor.send({ type: 'SET_MATTE_COLOR', value: 'red' });
+
+    expect(actor.getSnapshot().context.matteColor).toBe('#ffffff');
+  });
+
   it('enters an explicit error state and recovers declaratively', async () => {
     const decodeGif = vi.fn().mockRejectedValue(appError(ErrorCode.INVALID_FILE, 'Choose a GIF file.', 'abort'));
     const actor = createTestActor({ decodeGif });
@@ -116,6 +187,7 @@ describe('editor machine', () => {
 
     expect(serialized.value).toEqual({ editing: { tool: 'crop', transport: 'paused' } });
     expect(serialized.context.file).toEqual({ name: 'sample.gif', size: 2_000_000, type: undefined, lastModified: undefined });
+    expect(serialized.context.frameSummary).toEqual({ total: 2, serialized: 2, truncated: false });
     expect(serialized.context.frames[0]).toEqual({
       delay: 100,
       disposalType: 0,
