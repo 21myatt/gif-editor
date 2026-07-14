@@ -45,7 +45,7 @@ function encodeAttempt(context, strategy, options, onProgress) {
       width: options.width,
       height: options.height,
       transparent: context.alphaEnabled ? TRANSPARENT_KEY : null,
-      workerScript: '/gif.worker.js'
+      workerScript: `${import.meta.env.BASE_URL}gif.worker.js`
     });
     const compositor = createCompositor(context.source);
     const output = document.createElement('canvas');
